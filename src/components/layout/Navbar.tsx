@@ -12,6 +12,7 @@ const navLinks = [
   { name: "Experiences", href: "/experiences" },
   { name: "About", href: "/about" },
   { name: "Contact", href: "/contact" },
+  { name: "Booking", href: "/booking" },
 ];
 
 const languages = ["EN", "KU", "AR"];
@@ -119,9 +120,11 @@ export const Navbar = () => {
                 <User className="w-5 h-5" />
               </Button>
 
-              <Button variant="gold" size="default">
-                Book Now
-              </Button>
+              <Link to="/booking">
+                <Button variant="gold" size="default">
+                  Book Now
+                </Button>
+              </Link>
             </div>
 
             {/* Mobile Menu Toggle */}
@@ -175,9 +178,11 @@ export const Navbar = () => {
                   transition={{ delay: 0.6 }}
                   className="pt-6"
                 >
-                  <Button variant="gold" size="xl" className="w-full">
-                    Book Now
-                  </Button>
+                  <Link to="/booking" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Button variant="gold" size="xl" className="w-full">
+                      Book Now
+                    </Button>
+                  </Link>
                 </motion.div>
               </div>
             </nav>
