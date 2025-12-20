@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Users, MapPin, Home, Mountain, CreditCard, Check, ChevronRight, Star, Clock, Shield } from "lucide-react";
-import { format } from "date-fns";
+import { format, addDays, startOfToday } from "date-fns";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingButtons } from "@/components/shared/FloatingButtons";
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { exportBookingToExcel, type BookingData } from "@/lib/excel-utils";
 
 const popularTours = [
   { id: 1, name: "Erbil Heritage Walk", price: 89, duration: "4 hours", rating: 4.9, image: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400" },
@@ -51,23 +52,131 @@ const Booking = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = () => {
-    toast({
-      title: "Booking Request Submitted!",
-      description: "We'll contact you within 24 hours to confirm your booking.",
-    });
-    setStep(3);
+  const handleSubmit = async () => {
+    // Validate required fields
+    if (bookingType === "tour" && !tourDate) {
+      toast({ 
+        title: "Tour date required", 
+        description: "Please select a tour date before submitting.",
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    if (bookingType === "property") {
+      if (!checkIn) {
+        toast({ 
+          title: "Check-in date required", 
+          description: "Please select a check-in date before submitting.",
+          variant: "destructive" 
+        });
+        return;
+      }
+      if (!checkOut) {
+        toast({ 
+          title: "Check-out date required", 
+          description: "Please select a check-out date before submitting.",
+          variant: "destructive" 
+        });
+        return;
+      }
+      if (checkOut <= checkIn) {
+        toast({ 
+          title: "Invalid dates", 
+          description: "Check-out date must be after check-in date",
+          variant: "destructive" 
+        });
+        return;
+      }
+    }
+
+    try {
+      // Calculate total price
+      const selectedTourData = bookingType === "tour" ? popularTours.find(t => t.id === selectedTour) : null;
+      const selectedVillaData = bookingType === "property" ? popularVillas.find(v => v.id === selectedVilla) : null;
+      
+      const totalPrice = bookingType === "tour" 
+        ? (selectedTourData?.price || 0) * parseInt(guests)
+        : (selectedVillaData?.price || 0);
+
+      // Prepare booking data for Excel export
+      const bookingData: BookingData = {
+        type: bookingType,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        selectedItemName: bookingType === "tour" 
+          ? selectedTourData?.name 
+          : selectedVillaData?.name,
+        date: bookingType === "tour" && tourDate 
+          ? format(tourDate, "PPP") 
+          : undefined,
+        checkIn: bookingType === "property" && checkIn 
+          ? format(checkIn, "PPP") 
+          : undefined,
+        checkOut: bookingType === "property" && checkOut 
+          ? format(checkOut, "PPP") 
+          : undefined,
+        guests: guests,
+        totalPrice: totalPrice,
+        specialRequests: formData.specialRequests || undefined,
+        bookingDate: format(new Date(), "PPP 'at' p"),
+      };
+
+      // Export to Excel
+      await exportBookingToExcel(bookingData);
+
+      toast({
+        title: "Booking Request Submitted!",
+        description: "Your booking has been saved to Excel. We'll contact you within 24 hours to confirm.",
+      });
+      setStep(3);
+    } catch (error) {
+      console.error("Error exporting booking:", error);
+      toast({
+        title: "Booking Submitted",
+        description: "We'll contact you within 24 hours to confirm your booking.",
+        variant: "destructive",
+      });
+      setStep(3);
+    }
   };
 
   const nextStep = () => {
     if (step === 1) {
-      if (bookingType === "tour" && !selectedTour) {
-        toast({ title: "Please select a tour", variant: "destructive" });
-        return;
+      if (bookingType === "tour") {
+        if (!selectedTour) {
+          toast({ title: "Please select a tour", variant: "destructive" });
+          return;
+        }
+        if (!tourDate) {
+          toast({ title: "Please select a tour date", variant: "destructive" });
+          return;
+        }
       }
-      if (bookingType === "property" && !selectedVilla) {
-        toast({ title: "Please select a property", variant: "destructive" });
-        return;
+      if (bookingType === "property") {
+        if (!selectedVilla) {
+          toast({ title: "Please select a property", variant: "destructive" });
+          return;
+        }
+        if (!checkIn) {
+          toast({ title: "Please select a check-in date", variant: "destructive" });
+          return;
+        }
+        if (!checkOut) {
+          toast({ title: "Please select a check-out date", variant: "destructive" });
+          return;
+        }
+        // Validate that check-out is after check-in
+        if (checkOut <= checkIn) {
+          toast({ 
+            title: "Invalid dates", 
+            description: "Check-out date must be after check-in date",
+            variant: "destructive" 
+          });
+          return;
+        }
       }
     }
     setStep(step + 1);
@@ -152,7 +261,7 @@ const Booking = () => {
                     {/* Date & Guests Selection */}
                     <div className="grid md:grid-cols-2 gap-6 mb-8">
                       <div>
-                        <Label className="text-foreground mb-2 block">Tour Date</Label>
+                        <Label className="text-foreground mb-2 block">Tour Date <span className="text-red-500">*</span></Label>
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left bg-charcoal/50 border-border hover:bg-charcoal">
@@ -232,7 +341,7 @@ const Booking = () => {
                     {/* Date Selection */}
                     <div className="grid md:grid-cols-3 gap-6 mb-8">
                       <div>
-                        <Label className="text-foreground mb-2 block">Check-in</Label>
+                        <Label className="text-foreground mb-2 block">Check-in <span className="text-red-500">*</span></Label>
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left bg-charcoal/50 border-border hover:bg-charcoal">
@@ -247,12 +356,13 @@ const Booking = () => {
                               onSelect={setCheckIn}
                               initialFocus
                               className="pointer-events-auto"
+                              disabled={(date) => date < startOfToday()}
                             />
                           </PopoverContent>
                         </Popover>
                       </div>
                       <div>
-                        <Label className="text-foreground mb-2 block">Check-out</Label>
+                        <Label className="text-foreground mb-2 block">Check-out <span className="text-red-500">*</span></Label>
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button variant="outline" className="w-full justify-start text-left bg-charcoal/50 border-border hover:bg-charcoal">
@@ -267,6 +377,8 @@ const Booking = () => {
                               onSelect={setCheckOut}
                               initialFocus
                               className="pointer-events-auto"
+                              fromDate={checkIn ? addDays(checkIn, 1) : undefined}
+                              disabled={(date) => checkIn ? date <= checkIn : false}
                             />
                           </PopoverContent>
                         </Popover>
